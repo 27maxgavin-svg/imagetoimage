@@ -84,7 +84,7 @@
   </div>
 
   <div class="prompt-row">
-    <textarea id="prompt" placeholder="Describe the transformation… e.g. 'watercolor painting style', 'Studio Ghibli scene', 'dramatic sunset lighting'"></textarea>
+    <textarea id="prompt" placeholder="Describe what you want… e.g. 'watercolor painting', 'Studio Ghibli style', 'cyberpunk city at night'"></textarea>
     <button class="generate-btn" id="generateBtn" disabled>Generate</button>
   </div>
 
@@ -105,8 +105,7 @@
   const downloadBtn = document.getElementById('downloadBtn');
   const statusEl    = document.getElementById('status');
 
-  let imageBase64 = null;
-  let imageMime   = 'image/png';
+  let previewDataUrl = null;
 
   strengthEl.addEventListener('input', () => strengthVal.textContent = strengthEl.value);
 
@@ -121,13 +120,12 @@
   fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
 
   function loadFile(file) {
-    imageMime = file.type || 'image/png';
     const reader = new FileReader();
     reader.onload = e => {
-      imageBase64 = e.target.result.split(',')[1];
+      previewDataUrl = e.target.result;
       dropZone.querySelectorAll('img').forEach(i => i.remove());
       const img = document.createElement('img');
-      img.src = e.target.result;
+      img.src = previewDataUrl;
       dropZone.appendChild(img);
       generateBtn.disabled = false;
       setStatus('Image loaded — write a prompt and hit Generate');
@@ -137,7 +135,7 @@
 
   generateBtn.addEventListener('click', async () => {
     const p = promptEl.value.trim();
-    if (!imageBase64) return setStatus('Please upload an image first', 'error');
+    if (!previewDataUrl) return setStatus('Please upload an image first', 'error');
     if (!p) return setStatus('Please enter a prompt', 'error');
 
     generateBtn.disabled = true;
@@ -145,37 +143,17 @@
     placeholder.style.display = 'none';
     downloadBtn.style.display = 'none';
     spinner.style.display = 'block';
+    setStatus('Generating… this may take 20–40 seconds');
 
     try {
-      // Step 1: describe image — correct Puter.js format
-      setStatus('Step 1/2: Analyzing image…');
-      const visionReply = await puter.ai.chat(
-        [
-          {
-            role: 'user',
-            content: [
-              { type: 'image_url', image_url: { url: `data:${imageMime};base64,${imageBase64}` } },
-              { type: 'text', text: 'Describe this image in 2-3 sentences covering: subject, style, colors, composition, lighting, and mood. Be specific and visual.' }
-            ]
-          }
-        ]
-      );
-
-      const desc = typeof visionReply === 'string'
-        ? visionReply
-        : visionReply?.message?.content?.[0]?.text
-       || visionReply?.content?.[0]?.text
-       || 'an image';
-
       const n = parseInt(strengthEl.value);
-      const hint = n <= 3 ? 'Keep very close to the original, only subtle style changes.'
-                 : n <= 6 ? 'Moderate transformation, preserve the main subject.'
-                 :          'Strong transformation, heavily restyle the image.';
+      const hint = n <= 3 ? 'Subtle style change, keep the composition almost identical.'
+                 : n <= 6 ? 'Moderate transformation, preserve the main subject and layout.'
+                 :          'Strong creative transformation, heavily restyle the image.';
 
-      const finalPrompt = `${p}. ${hint} Based on this original: ${desc}`;
+      // Skip vision step — go straight to txt2img with the prompt + hint
+      const finalPrompt = `${p}. ${hint}`;
 
-      // Step 2: generate
-      setStatus('Step 2/2: Generating transformed image…');
       const imgEl = await puter.ai.txt2img(finalPrompt, { model: 'qwen/qwen-image-2.0' });
 
       spinner.style.display = 'none';
